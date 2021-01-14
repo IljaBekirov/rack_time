@@ -1,35 +1,39 @@
+require 'rack'
+require_relative 'time_formatter'
+
 class App
   def call(env)
-    [status, headers, body(env)]
+    request = Rack::Request.new(env)
+    parse_request(request)
   end
 
   private
 
-  def status
-    200
+  def parse_request(request)
+    check_request?(request) ? check_response(request) : response(status: 404, body: "Page not found\n")
+  end
+
+  def check_response(request)
+    query_formats = request.params['format'].to_s.split(',').map(&:to_sym)
+    time_formatter = TimeFormatter.new(query_formats)
+    time_formatter.call
+
+    if time_formatter.success?
+      response(status: 200, body: "Hello, time is #{time_formatter.time_string}\n")
+    else
+      response(status: 400, body: "Unknown time format #{time_formatter.unknown_format}\n")
+    end
+  end
+
+  def response(options = {})
+    Rack::Response.new(options[:body], options[:status], headers).finish
+  end
+
+  def check_request?(request)
+    request.get? && request.path_info == '/time'
   end
 
   def headers
     { 'Content-Type' => 'text/plain' }
-  end
-
-  def body(env)
-    env.map! { |format| send('date_time', format) }
-    ["Hello, time is #{env.join('-')}\n"]
-  end
-
-  def date_time(format)
-    case format
-    when 'year' then Time.now.year
-    when 'month' then check_zero(Time.now.month)
-    when 'day' then check_zero(Time.now.day)
-    when 'hour' then check_zero(Time.now.hour)
-    when 'minute' then check_zero(Time.now.min)
-    when 'second' then check_zero(Time.now.sec)
-    end
-  end
-
-  def check_zero(num)
-    num < 10 ? "0#{num}" : num
   end
 end
